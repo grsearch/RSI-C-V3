@@ -48,7 +48,7 @@ Solana 新代币 RSI(7)+EMA99+量能 策略监控机器人。
 
 | 数据 | 来源 | 用途 |
 |------|------|------|
-| K 线 OHLC | **Birdeye OHLCV API**（每60秒刷新，120根K线缓存） | RSI/EMA99 计算 |
+| K 线 OHLC | **Birdeye OHLCV API**（每30秒刷新，120根K线缓存） | RSI/EMA99 计算 |
 | 实时价格 | Birdeye WebSocket（subscribe_price） | stepRSI 实时估算、止损监控 |
 | 链上买卖量 | Helius Enhanced WebSocket（transactionSubscribe） | buyVolume / sellVolume 量能过滤 |
 | FDV / LP / Symbol | Birdeye token_overview | 入场过滤、自动 symbol 匹配 |
@@ -188,7 +188,7 @@ http://YOUR_SERVER:3001/diag
 | 变量 | 默认值 | 说明 |
 |------|--------|------|
 | `OHLCV_REALTIME_ENABLED` | `true` | 启用 OHLCV 实时刷新（替代不准的 ticks 聚合） |
-| `OHLCV_REFRESH_SEC` | `60` | 每 N 秒拉一次最新 K 线（对齐 1 分钟 K 线宽度） |
+| `OHLCV_REFRESH_SEC` | `30` | 每 N 秒拉一次最新 K 线（V5-32: 1min K 线下用 30s, 让 closed candle 滚得更勤, 配合 orphan-bucket 合并避免量能丢失） |
 | `OHLCV_REALTIME_BARS` | `120` | 实时刷新拉的 K 线根数 |
 
 ### prevRsi 时效保护（V5-15/V5-17）
@@ -309,6 +309,7 @@ curl http://localhost:3001/diag | jq .
 - **V5-29**: ★ 修 Birdeye WS chartType '1s' → '1m' (Birdeye 已不支持 1s). getCachedPrice 过期阈值 10s → 90s 覆盖 1m 推送间隔
 - **V5-30**: ★ 真正根因 — Birdeye WS 强制要求 `echo-protocol` subprotocol header, ws 库默认不发, 加 `new WebSocket(URL, 'echo-protocol')` 修复. chartType 回退 '1s' (V5-26 旧服务器一直在用), 缓存 90s 保留
 - **V5-31**: ★ K 线宽度 5min → 1min (KLINE_INTERVAL_SEC=60); OHLCV_REFRESH_SEC 对齐 60s; 买入数额回到 0.2 SOL; 硬止损 -20% → -50%; 关闭 "价格 < EMA99" 硬条件 (新增 EMA_PRICE_FILTER_ENABLED=false), 改由斜率过滤把关; EMA_SLOPE_LOOKBACK 5 → 10 (保持 ~10min 窗口), EMA_SLOPE_MIN_PCT 0% → -2% (容忍轻微下行); FDV_EXIT_USD 30K → 20K. 量能窗口 5min 和 5 SOL 门槛保持不变
+- **V5-32**: ★ 修 1min K 线下 Buy/Sell 量能全为 0 / 显示 `-` 的 bug. 根因: chain tick 落到"当前未收盘桶"(openTime 不在 closed candles 里)被丢弃, 5min 时影响小, 1min 时窗口窄影响大. 修法: monitor.js 新增 orphan-bucket 合并 — 桶 openTime > 最新 closed candle 的链上量能合并到最近一根上; OHLCV_REFRESH_SEC 60→30 让 closed candle 滚得更勤; /diag 加 volMergeStats 字段供观察
 
 ---
 

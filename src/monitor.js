@@ -445,8 +445,12 @@ class TokenMonitor extends EventEmitter {
   }
 
   // ★ V5-20: 暴露 _getCurrentCandles 的调用统计, 用于诊断 OHLCV 实时刷新是否生效
+  // ★ V5-32: 同时返回 volMergeStats —— 链上量能孤儿桶合并次数, 用于验证 1min K 线下量能补救生效
   getCallStats() {
-    return this._gccStats || null;
+    return {
+      ...(this._gccStats || {}),
+      volMergeStats: this._volMergeStats || null,
+    };
   }
 
   // ★ 手动重拉某个代币的历史K线（前端"K线数量过少"时用）
@@ -591,6 +595,16 @@ class TokenMonitor extends EventEmitter {
           v.volume += amt;
           if (t.isBuy) v.buyVolume += amt; else v.sellVolume += amt;
         }
+        // ★ V5-32 修复：先建立 closed-candle openTime 集合，再把"无家可归"的桶
+        //   （通常是当前未收盘桶 / 边界对不齐的桶）合并到最近的 closed candle 上，
+        //   避免 1 分钟 K 线下大量链上量能因桶错位而被丢弃。
+        const candleOpenTimes = new Set(candles.map(c => c.openTime));
+        const orphanBuckets   = [];
+        for (const [bucket, v] of volByBucket.entries()) {
+          if (!candleOpenTimes.has(bucket)) orphanBuckets.push({ bucket, v });
+        }
+        // 最近的 closed candle openTime（candles 升序，最后一个最新）
+        const latestClosedOT = candles.length > 0 ? candles[candles.length - 1].openTime : null;
         // 给每根 K 线注入对应桶的量能（Birdeye OHLCV 自带 volume 字段是 token 数量，不是 SOL，覆盖）
         for (const c of candles) {
           const v = volByBucket.get(c.openTime);
@@ -602,6 +616,30 @@ class TokenMonitor extends EventEmitter {
             // 没有链上数据时设为 0
             c.buyVolume  = 0;
             c.sellVolume = 0;
+          }
+        }
+        // ★ 把孤儿桶合并到最近的 closed candle（仅当桶时间 > 最新 closed candle 时，
+        //   即"当前未收盘桶"或"晚于最新 closed candle 的桶"。早于最新 closed candle
+        //   的孤儿桶通常是历史预热段无对应 K 线，忽略即可）
+        if (latestClosedOT !== null && orphanBuckets.length > 0) {
+          const lastCandle = candles[candles.length - 1];
+          let mergedCount = 0, mergedBuy = 0, mergedSell = 0;
+          for (const { bucket, v } of orphanBuckets) {
+            if (bucket > latestClosedOT) {
+              lastCandle.buyVolume  = (lastCandle.buyVolume  || 0) + v.buyVolume;
+              lastCandle.sellVolume = (lastCandle.sellVolume || 0) + v.sellVolume;
+              lastCandle.volume     = (lastCandle.volume     || 0) + v.volume;
+              mergedCount++;
+              mergedBuy  += v.buyVolume;
+              mergedSell += v.sellVolume;
+            }
+          }
+          if (mergedCount > 0) {
+            // 简单计数，便于 /diag 观察是否生效（这里用全局 stats，不是 per-token）
+            if (!this._volMergeStats) this._volMergeStats = { totalMerges: 0, totalBuy: 0, totalSell: 0 };
+            this._volMergeStats.totalMerges += mergedCount;
+            this._volMergeStats.totalBuy    += mergedBuy;
+            this._volMergeStats.totalSell   += mergedSell;
           }
         }
         // ★ V5-17: 把实时价格写回最新一根 K 线 close
