@@ -16,7 +16,7 @@ function recordsToCsv(records) {
     '买入时间', '卖出时间', '持仓时长(分钟)',
     '买入FDV($)', '买入LP($)',
     '买入SOL', '卖出SOL', '盈亏SOL', '盈亏%',
-    '退出原因', '空跑', 'GMGN链接',
+    '买入原因', '退出原因', '空跑', 'GMGN链接',
   ];
 
   const rows = records.map(r => {
@@ -32,6 +32,7 @@ function recordsToCsv(records) {
       r.entryFdv ?? '', r.entryLp ?? '',
       r.solIn    ?? '', r.solOut  ?? '', pnlSol,
       r.pnlPct   ?? '',
+      r.buyReason ?? '',
       r.exitReason ?? '持仓中',
       r.dryRun ? '是' : '否',
       `https://gmgn.ai/sol/token/${r.address}`,

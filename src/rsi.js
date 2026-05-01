@@ -438,9 +438,11 @@ function evaluateSignal(closedCandles, realtimePrice, tokenState) {
       // ★ V6: EMA99 斜率过滤 — 拒绝在下行趋势中买入（防接飞刀）
       //   BELIEF 案例：EMA99 持续下行，RSI 超卖只是趋势延续不是反弹信号
       //   Goblin 案例：EMA99 上行，RSI 超卖是健康回调 → 买入机会
+      let slopePctForLog = null;  // 用于买入 reason 标注当时斜率
       if (EMA_SLOPE_ENABLED && Number.isFinite(ema99)) {
         const slopeResult = calcEMASlope(closes, EMA_PERIOD, EMA_SLOPE_LOOKBACK);
         if (slopeResult) {
+          slopePctForLog = slopeResult.slopePct;
           if (slopeResult.slopePct < EMA_SLOPE_MIN_PCT) {
             updateState();
             return { rsi: rsiRealtime, prevRsi, signal: null,
@@ -459,8 +461,12 @@ function evaluateSignal(closedCandles, realtimePrice, tokenState) {
       if (volCheck.pass) {
         tokenState._lastBuyCandle = lastCandleTs;
         updateState();
+        // ★ V5-33: 买入 reason 带上 EMA99 斜率（slope=N/A 表示数据不足或斜率过滤关闭）
+        const slopeStr = slopePctForLog !== null
+          ? `slope=${slopePctForLog.toFixed(3)}%`
+          : 'slope=N/A';
         return { rsi: rsiRealtime, prevRsi, signal: 'BUY',
-                 reason: `RSI_OVERSOLD(${rsiRealtime.toFixed(1)}<${RSI_BUY})+EMA99OK+${volCheck.reason}`, volume: volumeInfo };
+                 reason: `RSI_OVERSOLD(${rsiRealtime.toFixed(1)}<${RSI_BUY})+EMA99(${slopeStr})+${volCheck.reason}`, volume: volumeInfo };
       }
       // 量能不达标，不标记 lastBuyCandle，下根K线继续检查
     }
