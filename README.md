@@ -2,7 +2,7 @@
 
 Solana 新代币 RSI(7)+EMA99+量能 策略监控机器人。
 
-**5分钟K线 · Birdeye OHLCV 实时刷新 · Helius 链上成交数据 · 空跑/实盘**
+**1分钟K线 · Birdeye OHLCV 实时刷新 · Helius 链上成交数据 · 空跑/实盘**
 
 ---
 
@@ -13,12 +13,13 @@ Solana 新代币 RSI(7)+EMA99+量能 策略监控机器人。
 | # | 条件 | 说明 |
 |---|------|------|
 | 1 | RSI(7) < 35 | 当前处于超卖区间 |
-| 2 | 价格 < EMA(99) | 处在长期均线下方（避免追高） |
+| 2 | EMA(99) 斜率 ≥ -2% | 拒绝在 EMA99 下行趋势中买入（防接飞刀，10根×1分钟=10分钟窗口） |
 | 3 | K 线数 ≥ 21 | RSI Wilder 收敛门槛 |
 | 4 | 过去 5 分钟内 buyVol ≥ 1.2 × sellVol | 链上资金净流入 |
 | 5 | 过去 5 分钟内总成交量 ≥ 5 SOL | 流动性门槛 |
 
-> 不等 RSI "上穿" 30，只要 RSI 在超卖区 + 资金净流入就立即入场。
+> 不等 RSI "上穿" 30，只要 RSI 在超卖区 + 资金净流入 + EMA99 不在下行就立即入场。
+> ⚠️ "价格 < EMA(99)" 硬条件已通过 `EMA_PRICE_FILTER_ENABLED=false` 关闭，改由斜率过滤把关趋势方向。
 
 ### 卖出条件（优先级从高到低，命中即卖）
 
@@ -28,18 +29,18 @@ Solana 新代币 RSI(7)+EMA99+量能 策略监控机器人。
 | 2 | RSI(7) 下穿 70 | 全仓卖出 | ✅ 启用 |
 | 3 | 涨幅 ≥ +100% | 固定止盈 | ✅ 启用 |
 | 4 | 上涨 ≥ +30% 后回撤 -20% | 移动止损 | ✅ 启用 |
-| 5 | 跌幅 ≤ -20% | 固定止损 | ✅ V5-26 启用 |
+| 5 | 跌幅 ≤ -50% | 固定止损 | ✅ V5-26 启用 |
 | 6 | 量能萎缩(最近3根均量 < 前4根均量×0.3) | 量能出场 | ✅ V5-26 启用 |
 | 7 | 持仓 ≥ 6 小时 | 超时卖出 (TIMEOUT_EXIT) | ✅ 启用 |
 
-> **持仓中** 即使 FDV 跌破 $30K 或 LP 跌破 $10K，也**不强制卖出**，等正常出场条件触发。
+> **持仓中** 即使 FDV 跌破 $20K 或 LP 跌破 $10K，也**不强制卖出**，等正常出场条件触发。
 > 仅在 **无持仓** 时，FDV/LP 跌破阈值会从监控列表中移除该代币。
 
 ### 仓位管理
 
 - 监控期内可多次进出场
 - 卖出后 30 分钟冷却期（同币不再交易）
-- 每笔买入 **1 SOL**
+- 每笔买入 **0.2 SOL**
 
 ---
 
@@ -47,7 +48,7 @@ Solana 新代币 RSI(7)+EMA99+量能 策略监控机器人。
 
 | 数据 | 来源 | 用途 |
 |------|------|------|
-| K 线 OHLC | **Birdeye OHLCV API**（每30秒刷新，120根K线缓存） | RSI/EMA99 计算 |
+| K 线 OHLC | **Birdeye OHLCV API**（每60秒刷新，120根K线缓存） | RSI/EMA99 计算 |
 | 实时价格 | Birdeye WebSocket（subscribe_price） | stepRSI 实时估算、止损监控 |
 | 链上买卖量 | Helius Enhanced WebSocket（transactionSubscribe） | buyVolume / sellVolume 量能过滤 |
 | FDV / LP / Symbol | Birdeye token_overview | 入场过滤、自动 symbol 匹配 |
@@ -120,10 +121,14 @@ http://YOUR_SERVER:3001/diag
 
 | 变量 | 默认值 | 说明 |
 |------|--------|------|
-| `KLINE_INTERVAL_SEC` | `300` | K线宽度（秒，**5分钟**，不是 15s） |
+| `KLINE_INTERVAL_SEC` | `60` | K线宽度（秒，**1分钟**） |
 | `RSI_PERIOD` | `7` | RSI 周期 |
 | `EMA_PERIOD` | `99` | EMA 长期均线周期 |
+| `EMA_PRICE_FILTER_ENABLED` | `false` | **价格 < EMA(99) 硬条件已关闭**，仅靠斜率把关趋势 |
 | `EMA_INSUFFICIENT_MODE` | `strict` | K 线不足 99 根时严格不出信号 |
+| `EMA_SLOPE_ENABLED` | `true` | 启用 EMA99 斜率过滤（防接飞刀） |
+| `EMA_SLOPE_LOOKBACK` | `10` | 斜率回看根数（10×1分钟=10分钟窗口） |
+| `EMA_SLOPE_MIN_PCT` | `-2` | 斜率下限（%），≥ -2% 才允许买入 |
 | `RSI_BUY_LEVEL` | `35` | 超卖买入阈值 |
 | `RSI_SELL_LEVEL` | `70` | RSI 下穿此值卖出 |
 | `RSI_PANIC_LEVEL` | `80` | RSI 超过此值立即卖出 |
@@ -134,7 +139,7 @@ http://YOUR_SERVER:3001/diag
 
 | 变量 | 默认值 | 说明 |
 |------|--------|------|
-| `TRADE_SIZE_SOL` | `1` | 每笔买入金额（SOL，**不是 0.2**） |
+| `TRADE_SIZE_SOL` | `0.2` | 每笔买入金额（SOL） |
 | `SELL_COOLDOWN_SEC` | `1800` | 卖出后冷却（秒，**30分钟**） |
 | `MAX_HOLD_SEC` | `21600` | 最大持仓时间（秒，**6小时**），超时强制卖出 reason=TIMEOUT_EXIT, 0=关闭 |
 
@@ -145,7 +150,7 @@ http://YOUR_SERVER:3001/diag
 | `TAKE_PROFIT_ENABLED` | `true` | 启用固定止盈 |
 | `TAKE_PROFIT_PCT` | `100` | 止盈百分比（**+100%**，不是 +50%） |
 | `STOP_LOSS_ENABLED` | `true` | **V5-26 启用**固定止损 |
-| `STOP_LOSS_PCT` | `-20` | 止损百分比 |
+| `STOP_LOSS_PCT` | `-50` | 止损百分比 |
 | `TRAILING_STOP_ENABLED` | `true` | 启用移动止损 |
 | `TRAILING_STOP_ACTIVATE` | `30` | 上涨 30% 后激活移动止损 |
 | `TRAILING_STOP_PCT` | `-20` | 从峰值回撤 20% 触发卖出 |
@@ -169,7 +174,7 @@ http://YOUR_SERVER:3001/diag
 |------|--------|------|
 | `MIN_FDV_USD` | `15000` | 入场 FDV 过滤 |
 | `MIN_LP_USD` | `5000` | 入场 LP 过滤 |
-| `FDV_EXIT_USD` | `30000` | 监控中 FDV 退出阈值（**仅无持仓时退出**） |
+| `FDV_EXIT_USD` | `20000` | 监控中 FDV 退出阈值（**仅无持仓时退出**） |
 | `LP_EXIT_USD` | `10000` | 监控中 LP 退出阈值（**仅无持仓时退出**） |
 
 ### 监控容量
@@ -183,7 +188,7 @@ http://YOUR_SERVER:3001/diag
 | 变量 | 默认值 | 说明 |
 |------|--------|------|
 | `OHLCV_REALTIME_ENABLED` | `true` | 启用 OHLCV 实时刷新（替代不准的 ticks 聚合） |
-| `OHLCV_REFRESH_SEC` | `300` | 每 N 秒拉一次最新 K 线（V5-25: 30→300, 大幅节省 Birdeye CU） |
+| `OHLCV_REFRESH_SEC` | `60` | 每 N 秒拉一次最新 K 线（对齐 1 分钟 K 线宽度） |
 | `OHLCV_REALTIME_BARS` | `120` | 实时刷新拉的 K 线根数 |
 
 ### prevRsi 时效保护（V5-15/V5-17）
@@ -303,6 +308,7 @@ curl http://localhost:3001/diag | jq .
 - **V5-28**: /diag 加 wsStream / getPriceStats 字段, 用于诊断 WS 推送命中率
 - **V5-29**: ★ 修 Birdeye WS chartType '1s' → '1m' (Birdeye 已不支持 1s). getCachedPrice 过期阈值 10s → 90s 覆盖 1m 推送间隔
 - **V5-30**: ★ 真正根因 — Birdeye WS 强制要求 `echo-protocol` subprotocol header, ws 库默认不发, 加 `new WebSocket(URL, 'echo-protocol')` 修复. chartType 回退 '1s' (V5-26 旧服务器一直在用), 缓存 90s 保留
+- **V5-31**: ★ K 线宽度 5min → 1min (KLINE_INTERVAL_SEC=60); OHLCV_REFRESH_SEC 对齐 60s; 买入数额回到 0.2 SOL; 硬止损 -20% → -50%; 关闭 "价格 < EMA99" 硬条件 (新增 EMA_PRICE_FILTER_ENABLED=false), 改由斜率过滤把关; EMA_SLOPE_LOOKBACK 5 → 10 (保持 ~10min 窗口), EMA_SLOPE_MIN_PCT 0% → -2% (容忍轻微下行); FDV_EXIT_USD 30K → 20K. 量能窗口 5min 和 5 SOL 门槛保持不变
 
 ---
 
