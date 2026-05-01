@@ -308,10 +308,24 @@ function fmtAge(createdAt) {
 }
 
 // ── 代币列表：排序 + 取当前页 ──
+//   优先级 1: X mentions count 从大到小（null/undefined 视为 -1, 排最后）
+//   优先级 2: 状态序 — 持仓(0) > 冷却(1) > 观望(2)
 function _getSortedTokens() {
   const arr = Array.from(_tokenData.values());
-  // 按24小时交易笔数从大到小排列
-  arr.sort((a, b) => (b.tradeCount || 0) - (a.tradeCount || 0));
+  const xmCount = d => {
+    const c = d.xMentions?.count;
+    return (c === null || c === undefined) ? -1 : c;
+  };
+  const stateRank = d => {
+    if (d.inPosition) return 0;
+    if (d.cooldown && d.cooldown > 0) return 1;
+    return 2;
+  };
+  arr.sort((a, b) => {
+    const dx = xmCount(b) - xmCount(a);   // X mentions 降序
+    if (dx !== 0) return dx;
+    return stateRank(a) - stateRank(b);   // 状态升序（持仓在前）
+  });
   return arr;
 }
 

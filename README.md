@@ -311,6 +311,7 @@ curl http://localhost:3001/diag | jq .
 - **V5-31**: ★ K 线宽度 5min → 1min (KLINE_INTERVAL_SEC=60); OHLCV_REFRESH_SEC 对齐 60s; 买入数额回到 0.2 SOL; 硬止损 -20% → -50%; 关闭 "价格 < EMA99" 硬条件 (新增 EMA_PRICE_FILTER_ENABLED=false), 改由斜率过滤把关; EMA_SLOPE_LOOKBACK 5 → 10 (保持 ~10min 窗口), EMA_SLOPE_MIN_PCT 0% → -2% (容忍轻微下行); FDV_EXIT_USD 30K → 20K. 量能窗口 5min 和 5 SOL 门槛保持不变
 - **V5-32**: ★ 修 1min K 线下 Buy/Sell 量能全为 0 / 显示 `-` 的 bug. 根因: chain tick 落到"当前未收盘桶"(openTime 不在 closed candles 里)被丢弃, 5min 时影响小, 1min 时窗口窄影响大. 修法: monitor.js 新增 orphan-bucket 合并 — 桶 openTime > 最新 closed candle 的链上量能合并到最近一根上; OHLCV_REFRESH_SEC 60→30 让 closed candle 滚得更勤; /diag 加 volMergeStats 字段供观察
 - **V5-33**: ★ EMA_SLOPE_MIN_PCT -2% → -1% (更严, 拒绝几乎任何下行); 买入信号 reason 带上 EMA99 斜率值 (RSI_OVERSOLD(...)+EMA99(slope=X.XXX%)+...); 每日 CSV 报告新增 "买入原因" 列 (在 "盈亏%" 和 "退出原因" 之间)
+- **V5-34**: dashboard 实时行情排序规则 — 按 X mentions 数从大到小为主, 同值内按状态序(持仓>冷却>观望). 替换原"按 24h 交易笔数从大到小"的规则
 
 ---
 
