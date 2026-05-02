@@ -466,7 +466,19 @@ function evaluateSignal(closedCandles, realtimePrice, tokenState) {
           ? `slope=${slopePctForLog.toFixed(3)}%`
           : 'slope=N/A';
         return { rsi: rsiRealtime, prevRsi, signal: 'BUY',
-                 reason: `RSI_OVERSOLD(${rsiRealtime.toFixed(1)}<${RSI_BUY})+EMA99(${slopeStr})+${volCheck.reason}`, volume: volumeInfo };
+                 reason: `RSI_OVERSOLD(${rsiRealtime.toFixed(1)}<${RSI_BUY})+EMA99(${slopeStr})+${volCheck.reason}`,
+                 volume: volumeInfo,
+                 // ★ V5-35: 详细诊断字段，供 _doBuy 打详细日志
+                 _diag: {
+                   avgGain, avgLoss, lastClose,
+                   realtimePrice,
+                   lastClosedRsi,
+                   rsiRealtime,
+                   lastCandleTs,
+                   closedCount: closedCandles.length,
+                   recentCloses: closes.slice(-10),
+                 }
+               };
       }
       // 量能不达标，不标记 lastBuyCandle，下根K线继续检查
     }

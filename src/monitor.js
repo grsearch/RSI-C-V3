@@ -1016,6 +1016,8 @@ class TokenMonitor extends EventEmitter {
         cooldownSec:    state._sellCooldownUntil > now ? Math.ceil((state._sellCooldownUntil - now) / 1000) : 0,
         // 最近 5 根 close，方便对比 GMGN 图表
         recentCloses:   lastCloses.map(v => Number(v.toPrecision(6))),
+        // ★ V5-35: 买入信号触发时的详细诊断（仅当 signal=BUY）
+        buyDiag:        sigRes._diag || null,
       };
     }
 
@@ -1116,6 +1118,35 @@ class TokenMonitor extends EventEmitter {
     const tradeNum = state.tradeCount + 1;
     logger.info('[Monitor] 🟢 BUY #%d %s @ %.8f | %s | DRY_RUN=%s',
       tradeNum, state.symbol, price, reason, DRY_RUN);
+
+    // ★ V5-35: 买入瞬间详细诊断日志，便于排查"RSI 与 GMGN 图表对不上"等问题
+    //   一旦观察到怪买入, 直接 grep "BUY_DIAG <symbol>" 拉所有数据
+    const diag = state._signalTrace?.buyDiag;
+    if (diag) {
+      const closesStr = (diag.recentCloses || []).map(v => Number(v).toPrecision(6)).join(',');
+      const lastCandleAge = diag.lastCandleTs ? Math.round((Date.now() - diag.lastCandleTs) / 1000) : -1;
+      const lastPriceAge  = state._lastPriceTs ? Math.round((Date.now() - state._lastPriceTs) / 1000) : -1;
+      logger.info(
+        '[Monitor] BUY_DIAG %s | closedCount=%d lastCandleAge=%ds | ' +
+        'lastClose=%s realtimePrice=%s | lastClosedRsi=%s rsiRealtime=%s | ' +
+        'avgGain=%s avgLoss=%s | _lastPriceUsd=%s _lastPriceAge=%ds | recentCloses=[%s]',
+        state.symbol,
+        diag.closedCount,
+        lastCandleAge,
+        Number(diag.lastClose).toPrecision(6),
+        Number(diag.realtimePrice).toPrecision(6),
+        Number(diag.lastClosedRsi).toFixed(2),
+        Number(diag.rsiRealtime).toFixed(2),
+        Number(diag.avgGain).toPrecision(4),
+        Number(diag.avgLoss).toPrecision(4),
+        state._lastPriceUsd ? Number(state._lastPriceUsd).toPrecision(6) : 'null',
+        lastPriceAge,
+        closesStr
+      );
+    } else {
+      logger.warn('[Monitor] BUY_DIAG %s | (无诊断数据, _signalTrace.buyDiag 为空)', state.symbol);
+    }
+
     state.inPosition = true;
 
     if (DRY_RUN) {
